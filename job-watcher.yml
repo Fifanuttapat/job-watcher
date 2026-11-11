@@ -1,0 +1,34 @@
+name: job-watcher
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"   # every 15 min (GitHub may delay a few minutes)
+  workflow_dispatch: {}        # manual "Run workflow" button
+
+permissions:
+  contents: write              # needed to save seen_jobs.json back to the repo
+
+concurrency:
+  group: job-watcher
+  cancel-in-progress: false
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Poll jobs and send new ones to Discord
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          JOOBLE_KEY: ${{ secrets.JOOBLE_KEY }}
+        run: python job_watcher.py
+      - name: Save seen jobs
+        run: |
+          git config user.name "job-watcher"
+          git config user.email "job-watcher@users.noreply.github.com"
+          git add seen_jobs.json
+          git diff --cached --quiet || (git commit -m "update seen jobs" && git push)
