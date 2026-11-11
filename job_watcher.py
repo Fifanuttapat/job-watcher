@@ -23,14 +23,27 @@ STATE = Path(__file__).with_name("seen_jobs.json")
 UA = {"User-Agent": "job-watcher/1.0"}
 NA = "ไม่ระบุ"
 
+# Only JUNIOR SOC / L1 roles. A title must (1) be a SOC / security-monitoring role
+# AND (2) carry a junior / L1 marker. Plain "SOC Analyst" (level unstated) is skipped.
 INCLUDE = re.compile(
-    r"\b(soc\b|security operations|soc analyst|security analyst|cyber ?security analyst|"
-    r"threat (detection|hunter|analyst)|incident (response|responder)|blue team|"
-    r"pentest\w*|penetration test\w*|red team\w*|offensive security|ethical hacker|"
-    r"vulnerability (analyst|assessment)|application security|appsec|security engineer)",
+    r"(\bsoc\b|security operations|security analyst|cyber ?security analyst|"
+    r"security monitoring|threat (detection|analyst)|incident (response|responder)|blue team|cyber defen[cs]e)",
     re.I,
 )
-EXCLUDE = re.compile(r"\b(senior|sr\.?|lead|principal|head of|director|manager|staff|architect)\b", re.I)
+JUNIOR = re.compile(
+    r"(\bjunior\b|\bjr\.?\b|\bl\s?-?1\b|\blevel\s?-?1\b|\btier\s?-?1\b|\bt1\b|\bentry[- ]level\b|"
+    r"\bassociate\b|\btrainee\b|\bgraduate\b|\bintern(ship)?\b|\banalyst\s+(i|1)\b|\bi\s*\(?l1\)?\b)",
+    re.I,
+)
+EXCLUDE = re.compile(
+    r"\b(senior|sr\.?|lead|principal|head of|director|manager|staff|architect|"
+    r"l\s?-?[23]|level\s?-?[23]|tier\s?-?[23]|analyst\s+(ii|iii|2|3)|ii|iii)\b",
+    re.I,
+)
+
+
+def is_target(title):
+    return bool(INCLUDE.search(title) and JUNIOR.search(title) and not EXCLUDE.search(title))
 
 EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 PHONE_RE = re.compile(r"(?<![\w/])(\+?\d[\d\s().-]{8,16}\d)(?![\w/])")
@@ -102,7 +115,7 @@ def job(src, title, company, country, url, date=None, salary=None, jtype=None, d
 
 def remotive():
     out = []
-    for q in ("soc analyst", "penetration tester", "security analyst"):
+    for q in ("junior soc analyst", "soc analyst l1", "tier 1 soc analyst", "soc analyst"):
         d = json.loads(get("https://remotive.com/api/remote-jobs?search=" + urllib.parse.quote(q)))
         for j in d.get("jobs", []):
             out.append(job("Remotive", j["title"], j["company_name"], j.get("candidate_required_location"), j["url"],
@@ -128,7 +141,7 @@ def jobicy():
 
 def himalayas():
     out = []
-    for q in ("soc analyst", "penetration tester"):
+    for q in ("junior soc analyst", "soc analyst l1", "tier 1 soc analyst", "soc analyst"):
         d = json.loads(get("https://himalayas.app/jobs/api/search?q=" + urllib.parse.quote(q)))
         for j in d.get("jobs", []):
             out.append(job("Himalayas", j.get("title"), j.get("companyName"),
@@ -157,7 +170,7 @@ def jooble():
     if not key:
         return []
     out = []
-    for q in ("SOC analyst", "penetration tester", "security analyst"):
+    for q in ("junior SOC analyst", "SOC analyst L1", "tier 1 SOC analyst"):
         body = json.dumps({"keywords": q, "location": "Thailand"}).encode()
         d = json.loads(get(f"https://jooble.org/api/{key}", body, {"Content-Type": "application/json"}))
         for j in d.get("jobs", []):
@@ -182,7 +195,7 @@ def collect():
         if not j["url"] or j["url"] in seen:
             continue
         seen.add(j["url"])
-        if INCLUDE.search(j["title"]) and not EXCLUDE.search(j["title"]):
+        if is_target(j["title"]):
             res.append(j)
     return res
 
